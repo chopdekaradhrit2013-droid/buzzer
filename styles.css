@@ -163,7 +163,7 @@ h1 { margin: 0; font-size: 34px; letter-spacing: -0.04em; }
 
 .unlock {
   width: 100%;
-  margin-bottom: 14px;
+  margin-bottom: 12px;
   border: 0;
   border-radius: 14px;
   padding: 14px;
@@ -174,6 +174,43 @@ h1 { margin: 0; font-size: 34px; letter-spacing: -0.04em; }
   cursor: pointer;
 }
 .unlock.ready { background: var(--safe-dim); color: var(--safe); }
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--card);
+  cursor: pointer;
+}
+.toggle input { position: absolute; opacity: 0; pointer-events: none; }
+.switch {
+  width: 46px;
+  height: 28px;
+  border-radius: 999px;
+  background: #2a3140;
+  position: relative;
+  flex-shrink: 0;
+}
+.switch::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.18s ease;
+}
+.toggle input:checked + .switch { background: var(--safe); }
+.toggle input:checked + .switch::after { transform: translateX(18px); }
+.toggle-copy { display: flex; flex-direction: column; gap: 2px; }
+.toggle-copy strong { font-size: 14px; }
+.toggle-copy small { color: var(--muted); font-size: 12px; }
 
 .last { color: var(--muted); margin: 16px 0 0; }
 
