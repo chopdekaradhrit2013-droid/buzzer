@@ -11,6 +11,8 @@ const state = {
   seen: new Set(),
   clientId: Math.random().toString(36).slice(2, 10),
   soundOn: false,
+  tts: localStorage.getItem("buzzer-tts") !== "off",
+  speaking: false,
 };
 
 const els = {
@@ -23,6 +25,7 @@ const els = {
   unlockBtn: document.getElementById("unlockBtn"),
   lastEvent: document.getElementById("lastEvent"),
   shareBtn: document.getElementById("shareBtn"),
+  ttsToggle: document.getElementById("ttsToggle"),
 };
 
 let mqttClient = null;
@@ -101,11 +104,20 @@ async function holdAwake() {
   } catch (e) {}
 }
 
+function warmVoices() {
+  if (!window.speechSynthesis) return;
+  window.speechSynthesis.getVoices();
+  const warm = new SpeechSynthesisUtterance(" ");
+  warm.volume = 0;
+  try { window.speechSynthesis.speak(warm); } catch (e) {}
+}
+
 async function unlockAudio() {
   try {
     const ctx = ensureAudio();
     if (ctx) await ctx.resume();
     startKeepAlive();
+    warmVoices();
     state.soundOn = true;
     els.unlockBtn.textContent = "Sound + background on";
     els.unlockBtn.classList.add("ready");
@@ -114,6 +126,7 @@ async function unlockAudio() {
     }
     await holdAwake();
     pingTone();
+    if (state.tts) speakText("Text to speech is on.");
   } catch {
     els.unlockBtn.textContent = "Tap again to enable sound";
   }
@@ -153,7 +166,7 @@ function beep(freq, start, dur, type, vol) {
 
 function playSafeTone() {
   const ctx = ensureAudio();
-  if (!ctx) return speakFallback("safe");
+  if (!ctx) return;
   const t = ctx.currentTime;
   beep(523, t, 0.16, "sine", 0.16);
   beep(659, t + 0.14, 0.18, "sine", 0.16);
@@ -162,7 +175,7 @@ function playSafeTone() {
 
 function playCarefulTone() {
   const ctx = ensureAudio();
-  if (!ctx) return speakFallback("careful");
+  if (!ctx) return;
   const t = ctx.currentTime;
   beep(440, t, 0.2, "triangle", 0.18);
   beep(392, t + 0.24, 0.28, "triangle", 0.18);
@@ -170,10 +183,7 @@ function playCarefulTone() {
 
 function playAlarmBuzzer() {
   const ctx = ensureAudio();
-  if (!ctx) {
-    speakFallback("alert");
-    return;
-  }
+  if (!ctx) return;
   if (alarmTimer) {
     clearInterval(alarmTimer);
     alarmTimer = null;
@@ -198,13 +208,36 @@ function playAlarmBuzzer() {
   }, 1400);
 }
 
-function speakFallback(id) {
-  if (!window.speechSynthesis) return;
-  const utter = new SpeechSynthesisUtterance(BUZZ[id].voice);
-  utter.rate = id === "alert" ? 1.12 : 0.96;
-  utter.pitch = id === "alert" ? 0.7 : id === "safe" ? 1.08 : 1;
-  window.speechSynthesis.cancel();
+function pickVoice() {
+  if (!window.speechSynthesis) return null;
+  const voices = window.speechSynthesis.getVoices() || [];
+  return voices.find(function (v) { return /en[-_]IN/i.test(v.lang); })
+    || voices.find(function (v) { return /^en/i.test(v.lang); })
+    || voices[0]
+    || null;
+}
+
+function speakText(text, id) {
+  if (!state.tts || !window.speechSynthesis) return;
+  const utter = new SpeechSynthesisUtterance(text);
+  const voice = pickVoice();
+  if (voice) utter.voice = voice;
+  utter.rate = id === "alert" ? 1.08 : 0.96;
+  utter.pitch = id === "alert" ? 0.72 : id === "safe" ? 1.08 : 1;
+  utter.volume = 1;
+  utter.onstart = function () { state.speaking = true; };
+  utter.onend = function () { state.speaking = false; };
+  utter.onerror = function () { state.speaking = false; };
+  try { window.speechSynthesis.cancel(); } catch (e) {}
+  state.speaking = true;
   window.speechSynthesis.speak(utter);
+  setTimeout(function () {
+    try { window.speechSynthesis.resume(); } catch (e) {}
+  }, 60);
+}
+
+function speakBuzz(id) {
+  speakText(BUZZ[id].voice, id);
 }
 
 async function playVoice(id) {
@@ -212,7 +245,17 @@ async function playVoice(id) {
   if (id === "alert") playAlarmBuzzer();
   else if (id === "safe") playSafeTone();
   else playCarefulTone();
-  speakFallback(id);
+  if (state.tts) {
+    const delay = id === "alert" ? 700 : 120;
+    setTimeout(function () { speakBuzz(id); }, delay);
+  }
+}
+
+function setTts(on) {
+  state.tts = !!on;
+  localStorage.setItem("buzzer-tts", state.tts ? "on" : "off");
+  if (els.ttsToggle) els.ttsToggle.checked = state.tts;
+  if (state.tts && state.soundOn) speakText("Text to speech is on.");
 }
 
 function flashSend(id) {
@@ -241,7 +284,7 @@ function showReceive(id, when) {
 function notify(id) {
   if (!("Notification" in window) || Notification.permission !== "granted") return;
   const title = BUZZ[id].title;
-  const body = id === "alert" ? "Alarm buzzer" : BUZZ[id].voice;
+  const body = state.tts ? BUZZ[id].voice : (id === "alert" ? "Alarm buzzer" : BUZZ[id].voice);
   const opts = { body: body, tag: "hangout-buzzer", renotify: true, silent: false };
   if (navigator.serviceWorker && navigator.serviceWorker.ready) {
     navigator.serviceWorker.ready.then(function (reg) {
@@ -354,6 +397,16 @@ els.shareBtn.addEventListener("click", async function () {
     prompt("Copy this receive link", url.toString());
   }
 });
+if (els.ttsToggle) {
+  els.ttsToggle.checked = state.tts;
+  els.ttsToggle.addEventListener("change", function () {
+    setTts(els.ttsToggle.checked);
+    if (!state.soundOn) unlockAudio();
+  });
+}
+if (window.speechSynthesis) {
+  window.speechSynthesis.onvoiceschanged = pickVoice;
+}
 
 document.addEventListener("visibilitychange", function () {
   if (document.visibilityState === "visible") {
@@ -361,17 +414,26 @@ document.addEventListener("visibilitychange", function () {
     holdAwake();
     if (!liveFlags.mqtt || !liveFlags.ntfy) connect();
   }
+  if (window.speechSynthesis) {
+    try { window.speechSynthesis.resume(); } catch (e) {}
+  }
 });
 window.addEventListener("focus", function () {
   ensureAudio();
   if (!liveFlags.mqtt) connectMqtt();
+  if (window.speechSynthesis) {
+    try { window.speechSynthesis.resume(); } catch (e) {}
+  }
 });
 setInterval(function () {
   if (state.tab !== "receive") return;
   if (!liveFlags.mqtt) connectMqtt();
   if (!liveFlags.ntfy) connectNtfy();
   if (audioCtx && audioCtx.state === "suspended" && state.soundOn) audioCtx.resume();
-}, 8000);
+  if (state.tts && window.speechSynthesis && (state.speaking || window.speechSynthesis.speaking || window.speechSynthesis.pending)) {
+    try { window.speechSynthesis.resume(); } catch (e) {}
+  }
+}, 250);
 
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("./sw.js").catch(function () {});
