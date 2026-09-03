@@ -32,12 +32,17 @@
         <button class="tab" data-tab="receive" role="tab" aria-selected="false">Receive</button>
       </nav>
       <section class="panel" id="sendPanel">
-        <p class="hint">Tap a buzzer. Anyone on <strong>Receive</strong> in this room hears it and sees the status — even if their tab is in the background.</p>
+        <p class="hint">Tap a buzzer, or type a message. Anyone on <strong>Receive</strong> hears it — even in the background.</p>
         <div class="buzzers">
           <button class="buzzer safe" data-buzz="safe"><span class="ring"></span><span class="label">Safe</span><span class="sub">All clear</span></button>
           <button class="buzzer careful" data-buzz="careful"><span class="ring"></span><span class="label">Be careful</span><span class="sub">Stay alert</span></button>
           <button class="buzzer alert" data-buzz="alert"><span class="ring"></span><span class="label">Alert</span><span class="sub">Alarm buzzer</span></button>
         </div>
+        <form class="speak-box" id="speakForm">
+          <label for="speakInput">Text to speech</label>
+          <textarea id="speakInput" maxlength="220" rows="3" placeholder="Type a message. Receive will speak it."></textarea>
+          <button type="submit" class="speak-btn" id="speakBtn">Speak on receive</button>
+        </form>
       </section>
       <section class="panel hidden" id="receivePanel">
         <p class="hint">Tap enable once. Keep this page open in a tab (it can sit in the background). Alert plays a loud alarm buzzer.</p>
@@ -47,7 +52,7 @@
           <span class="switch"></span>
           <span class="toggle-copy">
             <strong>Text to speech</strong>
-            <small>Speak Safe / Be careful / Alert in background</small>
+            <small>Speak buzzer labels and incoming messages</small>
           </span>
         </label>
         <div class="status-grid">
@@ -55,6 +60,10 @@
           <article class="status-card" data-status="careful"><span class="badge">Be careful</span><strong>Waiting</strong><small>No signal yet</small></article>
           <article class="status-card" data-status="alert"><span class="badge">Alert</span><strong>Waiting</strong><small>No signal yet</small></article>
         </div>
+        <article class="message-card" id="messageCard">
+          <span class="badge">Spoken message</span>
+          <p id="spokenText">Nothing spoken yet</p>
+        </article>
         <p class="last" id="lastEvent">Listening…</p>
       </section>
       <footer class="foot">
