@@ -26,6 +26,11 @@ const els = {
   lastEvent: document.getElementById("lastEvent"),
   shareBtn: document.getElementById("shareBtn"),
   ttsToggle: document.getElementById("ttsToggle"),
+  speakForm: document.getElementById("speakForm"),
+  speakInput: document.getElementById("speakInput"),
+  speakBtn: document.getElementById("speakBtn"),
+  spokenText: document.getElementById("spokenText"),
+  messageCard: document.getElementById("messageCard"),
 };
 
 let mqttClient = null;
@@ -126,7 +131,7 @@ async function unlockAudio() {
     }
     await holdAwake();
     pingTone();
-    if (state.tts) speakText("Text to speech is on.");
+    if (state.tts) speakText("Text to speech is on.", null, true);
   } catch {
     els.unlockBtn.textContent = "Tap again to enable sound";
   }
@@ -217,9 +222,10 @@ function pickVoice() {
     || null;
 }
 
-function speakText(text, id) {
-  if (!state.tts || !window.speechSynthesis) return;
-  const utter = new SpeechSynthesisUtterance(text);
+function speakText(text, id, force) {
+  if (!window.speechSynthesis) return;
+  if (!force && !state.tts) return;
+  const utter = new SpeechSynthesisUtterance(String(text || ""));
   const voice = pickVoice();
   if (voice) utter.voice = voice;
   utter.rate = id === "alert" ? 1.08 : 0.96;
@@ -255,7 +261,7 @@ function setTts(on) {
   state.tts = !!on;
   localStorage.setItem("buzzer-tts", state.tts ? "on" : "off");
   if (els.ttsToggle) els.ttsToggle.checked = state.tts;
-  if (state.tts && state.soundOn) speakText("Text to speech is on.");
+  if (state.tts && state.soundOn) speakText("Text to speech is on.", null, true);
 }
 
 function flashSend(id) {
@@ -281,10 +287,14 @@ function showReceive(id, when) {
   els.lastEvent.textContent = BUZZ[id].title + " received at " + new Date(when).toLocaleTimeString();
 }
 
-function notify(id) {
+function showSpoken(text, when) {
+  if (els.spokenText) els.spokenText.textContent = text;
+  if (els.messageCard) els.messageCard.classList.add("on");
+  els.lastEvent.textContent = "Message received at " + new Date(when).toLocaleTimeString();
+}
+
+function notify(title, body) {
   if (!("Notification" in window) || Notification.permission !== "granted") return;
-  const title = BUZZ[id].title;
-  const body = state.tts ? BUZZ[id].voice : (id === "alert" ? "Alarm buzzer" : BUZZ[id].voice);
   const opts = { body: body, tag: "hangout-buzzer", renotify: true, silent: false };
   if (navigator.serviceWorker && navigator.serviceWorker.ready) {
     navigator.serviceWorker.ready.then(function (reg) {
@@ -297,45 +307,78 @@ function notify(id) {
   }
 }
 
+function publish(body, title) {
+  const text = JSON.stringify(body);
+  state.seen.add(body.uid);
+  if (channel) { try { channel.postMessage(body); } catch (e) {} }
+  if (mqttClient && mqttClient.connected) { try { mqttClient.publish(topic(), text); } catch (e) {} }
+  fetch("https://ntfy.sh/" + topic(), {
+    method: "POST",
+    headers: { Title: title || "Buzzer", "Content-Type": "text/plain" },
+    body: text,
+  }).then(function (res) {
+    liveFlags.ntfy = res.ok;
+    markLive();
+  }).catch(function () {
+    liveFlags.ntfy = false;
+    markLive();
+  });
+}
+
 function handleMessage(raw) {
   let data = raw;
   if (typeof raw === "string") {
     try { data = JSON.parse(raw); } catch { return; }
   }
-  if (!data || !BUZZ[data.id]) return;
-  const key = data.uid || data.id + "-" + data.t;
+  if (!data) return;
+  const key = data.uid || (data.id + "-" + data.t + "-" + (data.text || ""));
   if (state.seen.has(key)) return;
   state.seen.add(key);
   if (data.from === state.clientId) return;
-  if (state.tab === "receive") {
-    showReceive(data.id, data.t || Date.now());
-    playVoice(data.id);
-    notify(data.id);
-    if (navigator.vibrate) navigator.vibrate(data.id === "alert" ? [120, 50, 120, 50, 220] : 45);
+  if (state.tab !== "receive") return;
+
+  if (data.id === "say") {
+    const text = String(data.text || "").trim().slice(0, 220);
+    if (!text) return;
+    showSpoken(text, data.t || Date.now());
+    ensureAudio();
+    speakText(text, "say", true);
+    notify("Message", text);
+    if (navigator.vibrate) navigator.vibrate([40, 30, 40]);
+    return;
   }
+
+  if (!BUZZ[data.id]) return;
+  showReceive(data.id, data.t || Date.now());
+  playVoice(data.id);
+  notify(BUZZ[data.id].title, state.tts ? BUZZ[data.id].voice : (data.id === "alert" ? "Alarm buzzer" : BUZZ[data.id].voice));
+  if (navigator.vibrate) navigator.vibrate(data.id === "alert" ? [120, 50, 120, 50, 220] : 45);
 }
-function payload(id) {
-  return { id: id, t: Date.now(), uid: Math.random().toString(36).slice(2, 10), from: state.clientId };
+
+function payload(id, extra) {
+  return Object.assign({ id: id, t: Date.now(), uid: Math.random().toString(36).slice(2, 10), from: state.clientId }, extra || {});
 }
-async function sendBuzz(id) {
+
+function sendBuzz(id) {
   flashSend(id);
-  const body = payload(id);
-  const text = JSON.stringify(body);
-  state.seen.add(body.uid);
-  if (channel) { try { channel.postMessage(body); } catch (e) {} }
-  if (mqttClient && mqttClient.connected) { try { mqttClient.publish(topic(), text); } catch (e) {} }
-  try {
-    const res = await fetch("https://ntfy.sh/" + topic(), {
-      method: "POST",
-      headers: { Title: BUZZ[id].title, "Content-Type": "text/plain" },
-      body: text,
-    });
-    liveFlags.ntfy = res.ok;
-  } catch (e) {
-    liveFlags.ntfy = false;
-  }
-  markLive();
+  publish(payload(id), BUZZ[id].title);
 }
+
+function sendSpeech() {
+  const text = String(els.speakInput.value || "").trim().slice(0, 220);
+  if (!text) {
+    els.speakInput.focus();
+    return;
+  }
+  publish(payload("say", { text: text }), text.slice(0, 40));
+  els.speakBtn.textContent = "Sent";
+  els.speakBtn.classList.add("sent");
+  setTimeout(function () {
+    els.speakBtn.textContent = "Speak on receive";
+    els.speakBtn.classList.remove("sent");
+  }, 1200);
+}
+
 function connectMqtt() {
   if (!window.mqtt) return;
   if (mqttClient) { try { mqttClient.end(true); } catch (e) {} mqttClient = null; }
@@ -397,6 +440,12 @@ els.shareBtn.addEventListener("click", async function () {
     prompt("Copy this receive link", url.toString());
   }
 });
+if (els.speakForm) {
+  els.speakForm.addEventListener("submit", function (event) {
+    event.preventDefault();
+    sendSpeech();
+  });
+}
 if (els.ttsToggle) {
   els.ttsToggle.checked = state.tts;
   els.ttsToggle.addEventListener("change", function () {
@@ -430,7 +479,7 @@ setInterval(function () {
   if (!liveFlags.mqtt) connectMqtt();
   if (!liveFlags.ntfy) connectNtfy();
   if (audioCtx && audioCtx.state === "suspended" && state.soundOn) audioCtx.resume();
-  if (state.tts && window.speechSynthesis && (state.speaking || window.speechSynthesis.speaking || window.speechSynthesis.pending)) {
+  if (window.speechSynthesis && (state.speaking || window.speechSynthesis.speaking || window.speechSynthesis.pending)) {
     try { window.speechSynthesis.resume(); } catch (e) {}
   }
 }, 250);
