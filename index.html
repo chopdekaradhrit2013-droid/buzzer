@@ -24,66 +24,37 @@
           <span id="roomLabel">room · main</span>
         </div>
       </header>
-
       <nav class="tabs" role="tablist">
         <button class="tab is-active" data-tab="send" role="tab" aria-selected="true">Send</button>
         <button class="tab" data-tab="receive" role="tab" aria-selected="false">Receive</button>
       </nav>
-
       <section class="panel" id="sendPanel">
         <p class="hint">Tap a buzzer. Anyone on <strong>Receive</strong> in this room hears the voice and sees the status.</p>
         <div class="buzzers">
-          <button class="buzzer safe" data-buzz="safe">
-            <span class="ring"></span>
-            <span class="label">Safe</span>
-            <span class="sub">All clear</span>
-          </button>
-          <button class="buzzer careful" data-buzz="careful">
-            <span class="ring"></span>
-            <span class="label">Be careful</span>
-            <span class="sub">Stay alert</span>
-          </button>
-          <button class="buzzer alert" data-buzz="alert">
-            <span class="ring"></span>
-            <span class="label">Alert</span>
-            <span class="sub">Needs attention</span>
-          </button>
+          <button class="buzzer safe" data-buzz="safe"><span class="ring"></span><span class="label">Safe</span><span class="sub">All clear</span></button>
+          <button class="buzzer careful" data-buzz="careful"><span class="ring"></span><span class="label">Be careful</span><span class="sub">Stay alert</span></button>
+          <button class="buzzer alert" data-buzz="alert"><span class="ring"></span><span class="label">Alert</span><span class="sub">Needs attention</span></button>
         </div>
       </section>
-
       <section class="panel hidden" id="receivePanel">
         <p class="hint">Keep this tab open. Status lights up and the matching voice plays when someone sends.</p>
         <button class="unlock" id="unlockBtn">Tap to enable sound</button>
         <div class="status-grid">
-          <article class="status-card" data-status="safe">
-            <span class="badge">Safe</span>
-            <strong>Waiting</strong>
-            <small>No signal yet</small>
-          </article>
-          <article class="status-card" data-status="careful">
-            <span class="badge">Be careful</span>
-            <strong>Waiting</strong>
-            <small>No signal yet</small>
-          </article>
-          <article class="status-card" data-status="alert">
-            <span class="badge">Alert</span>
-            <strong>Waiting</strong>
-            <small>No signal yet</small>
-          </article>
+          <article class="status-card" data-status="safe"><span class="badge">Safe</span><strong>Waiting</strong><small>No signal yet</small></article>
+          <article class="status-card" data-status="careful"><span class="badge">Be careful</span><strong>Waiting</strong><small>No signal yet</small></article>
+          <article class="status-card" data-status="alert"><span class="badge">Alert</span><strong>Waiting</strong><small>No signal yet</small></article>
         </div>
         <p class="last" id="lastEvent">Listening…</p>
       </section>
-
       <footer class="foot">
-        <label class="room-edit">
-          Room
-          <input id="roomInput" maxlength="24" autocomplete="off" spellcheck="false" />
-        </label>
+        <label class="room-edit">Room<input id="roomInput" maxlength="24" autocomplete="off" spellcheck="false" /></label>
         <button class="ghost" id="shareBtn">Copy receive link</button>
       </footer>
     </main>
     <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
-    <script src="./voices.js"></script>
+    <script src="./voice-safe.js"></script>
+    <script src="./voice-careful.js"></script>
+    <script src="./voice-alert.js"></script>
     <script src="./app.js"></script>
   </body>
 </html>
