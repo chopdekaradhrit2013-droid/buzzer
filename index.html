@@ -32,7 +32,8 @@
         <button class="tab" data-tab="receive" role="tab" aria-selected="false">Receive</button>
       </nav>
       <section class="panel" id="sendPanel">
-        <p class="hint">Tap a buzzer, or type a message. Anyone on <strong>Receive</strong> hears it — even in the background.</p>
+        <p class="hint">Send tab can hear everything too. Use <strong>Receive</strong> only if you want no buttons so nobody taps by mistake.</p>
+        <button class="unlock" id="unlockBtnSend">Tap to enable sound + background</button>
         <div class="buzzers">
           <button class="buzzer safe" data-buzz="safe"><span class="ring"></span><span class="label">Safe</span><span class="sub">All clear</span></button>
           <button class="buzzer careful" data-buzz="careful"><span class="ring"></span><span class="label">Be careful</span><span class="sub">Stay alert</span></button>
@@ -40,12 +41,13 @@
         </div>
         <form class="speak-box" id="speakForm">
           <label for="speakInput">Text to speech</label>
-          <textarea id="speakInput" maxlength="220" rows="3" placeholder="Type a message. Receive will speak it."></textarea>
-          <button type="submit" class="speak-btn" id="speakBtn">Speak on receive</button>
+          <textarea id="speakInput" maxlength="220" rows="3" placeholder="Type a message. Everyone in this room hears it."></textarea>
+          <button type="submit" class="speak-btn" id="speakBtn">Speak to room</button>
         </form>
+        <p class="last" id="sendLast">Listening…</p>
       </section>
       <section class="panel hidden" id="receivePanel">
-        <p class="hint">Tap enable once. Keep this page open in a tab (it can sit in the background). Alert plays a loud alarm buzzer.</p>
+        <p class="hint">No buttons here, so it can’t be tapped by accident. Tap enable once. Keep this page open — it can sit in the background.</p>
         <button class="unlock" id="unlockBtn">Tap to enable sound + background</button>
         <label class="toggle" id="ttsWrap">
           <input type="checkbox" id="ttsToggle" />
