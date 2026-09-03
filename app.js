@@ -23,7 +23,9 @@ const els = {
   roomLabel: document.getElementById("roomLabel"),
   connDot: document.getElementById("connDot"),
   unlockBtn: document.getElementById("unlockBtn"),
+  unlockBtnSend: document.getElementById("unlockBtnSend"),
   lastEvent: document.getElementById("lastEvent"),
+  sendLast: document.getElementById("sendLast"),
   shareBtn: document.getElementById("shareBtn"),
   ttsToggle: document.getElementById("ttsToggle"),
   speakForm: document.getElementById("speakForm"),
@@ -51,6 +53,10 @@ function markLive() {
   els.connDot.classList.toggle("live", ok);
   els.connDot.classList.toggle("bad", !ok);
 }
+function setHeard(text) {
+  if (els.lastEvent) els.lastEvent.textContent = text;
+  if (els.sendLast) els.sendLast.textContent = text;
+}
 function setTab(tab) {
   state.tab = tab;
   els.tabs.forEach((btn) => {
@@ -64,7 +70,7 @@ function setTab(tab) {
   url.searchParams.set("tab", tab);
   url.searchParams.set("room", state.room);
   history.replaceState({}, "", url);
-  if (tab === "receive") holdAwake();
+  holdAwake();
 }
 function setRoom(room) {
   state.room = slug(room);
@@ -100,10 +106,10 @@ function startKeepAlive() {
 
 async function holdAwake() {
   try {
-    if (navigator.wakeLock && state.tab === "receive") {
+    if (navigator.wakeLock) {
       wakeLock = await navigator.wakeLock.request("screen");
       wakeLock.addEventListener("release", function () {
-        if (state.tab === "receive" && document.visibilityState === "visible") holdAwake();
+        if (document.visibilityState === "visible") holdAwake();
       });
     }
   } catch (e) {}
@@ -117,23 +123,31 @@ function warmVoices() {
   try { window.speechSynthesis.speak(warm); } catch (e) {}
 }
 
+function markSoundOn() {
+  state.soundOn = true;
+  [els.unlockBtn, els.unlockBtnSend].forEach(function (btn) {
+    if (!btn) return;
+    btn.textContent = "Sound + background on";
+    btn.classList.add("ready");
+  });
+}
+
 async function unlockAudio() {
   try {
     const ctx = ensureAudio();
     if (ctx) await ctx.resume();
     startKeepAlive();
     warmVoices();
-    state.soundOn = true;
-    els.unlockBtn.textContent = "Sound + background on";
-    els.unlockBtn.classList.add("ready");
+    markSoundOn();
     if ("Notification" in window && Notification.permission === "default") {
       await Notification.requestPermission();
     }
     await holdAwake();
     pingTone();
-    if (state.tts) speakText("Text to speech is on.", null, true);
   } catch {
-    els.unlockBtn.textContent = "Tap again to enable sound";
+    [els.unlockBtn, els.unlockBtnSend].forEach(function (btn) {
+      if (btn) btn.textContent = "Tap again to enable sound";
+    });
   }
 }
 
@@ -284,13 +298,13 @@ function showReceive(id, when) {
       strong.textContent = "Waiting";
     }
   });
-  els.lastEvent.textContent = BUZZ[id].title + " received at " + new Date(when).toLocaleTimeString();
+  setHeard(BUZZ[id].title + " received at " + new Date(when).toLocaleTimeString());
 }
 
 function showSpoken(text, when) {
   if (els.spokenText) els.spokenText.textContent = text;
   if (els.messageCard) els.messageCard.classList.add("on");
-  els.lastEvent.textContent = "Message received at " + new Date(when).toLocaleTimeString();
+  setHeard("\"" + text + "\" at " + new Date(when).toLocaleTimeString());
 }
 
 function notify(title, body) {
@@ -325,6 +339,26 @@ function publish(body, title) {
   });
 }
 
+function handleIncoming(data, isLocal) {
+  if (data.id === "say") {
+    const text = String(data.text || "").trim().slice(0, 220);
+    if (!text) return;
+    showSpoken(text, data.t || Date.now());
+    ensureAudio();
+    speakText(text, "say", true);
+    if (!isLocal) notify("Message", text);
+    if (navigator.vibrate) navigator.vibrate([40, 30, 40]);
+    return;
+  }
+  if (!BUZZ[data.id]) return;
+  showReceive(data.id, data.t || Date.now());
+  playVoice(data.id);
+  if (!isLocal) {
+    notify(BUZZ[data.id].title, state.tts ? BUZZ[data.id].voice : (data.id === "alert" ? "Alarm buzzer" : BUZZ[data.id].voice));
+  }
+  if (navigator.vibrate) navigator.vibrate(data.id === "alert" ? [120, 50, 120, 50, 220] : 45);
+}
+
 function handleMessage(raw) {
   let data = raw;
   if (typeof raw === "string") {
@@ -335,24 +369,7 @@ function handleMessage(raw) {
   if (state.seen.has(key)) return;
   state.seen.add(key);
   if (data.from === state.clientId) return;
-  if (state.tab !== "receive") return;
-
-  if (data.id === "say") {
-    const text = String(data.text || "").trim().slice(0, 220);
-    if (!text) return;
-    showSpoken(text, data.t || Date.now());
-    ensureAudio();
-    speakText(text, "say", true);
-    notify("Message", text);
-    if (navigator.vibrate) navigator.vibrate([40, 30, 40]);
-    return;
-  }
-
-  if (!BUZZ[data.id]) return;
-  showReceive(data.id, data.t || Date.now());
-  playVoice(data.id);
-  notify(BUZZ[data.id].title, state.tts ? BUZZ[data.id].voice : (data.id === "alert" ? "Alarm buzzer" : BUZZ[data.id].voice));
-  if (navigator.vibrate) navigator.vibrate(data.id === "alert" ? [120, 50, 120, 50, 220] : 45);
+  handleIncoming(data, false);
 }
 
 function payload(id, extra) {
@@ -360,8 +377,11 @@ function payload(id, extra) {
 }
 
 function sendBuzz(id) {
+  unlockAudio();
   flashSend(id);
-  publish(payload(id), BUZZ[id].title);
+  const body = payload(id);
+  handleIncoming(body, true);
+  publish(body, BUZZ[id].title);
 }
 
 function sendSpeech() {
@@ -370,11 +390,14 @@ function sendSpeech() {
     els.speakInput.focus();
     return;
   }
-  publish(payload("say", { text: text }), text.slice(0, 40));
+  unlockAudio();
+  const body = payload("say", { text: text });
+  handleIncoming(body, true);
+  publish(body, text.slice(0, 40));
   els.speakBtn.textContent = "Sent";
   els.speakBtn.classList.add("sent");
   setTimeout(function () {
-    els.speakBtn.textContent = "Speak on receive";
+    els.speakBtn.textContent = "Speak to room";
     els.speakBtn.classList.remove("sent");
   }, 1200);
 }
@@ -426,7 +449,8 @@ els.tabs.forEach(function (btn) { btn.addEventListener("click", function () { se
 document.querySelectorAll(".buzzer").forEach(function (btn) {
   btn.addEventListener("click", function () { sendBuzz(btn.dataset.buzz); });
 });
-els.unlockBtn.addEventListener("click", unlockAudio);
+if (els.unlockBtn) els.unlockBtn.addEventListener("click", unlockAudio);
+if (els.unlockBtnSend) els.unlockBtnSend.addEventListener("click", unlockAudio);
 els.roomInput.addEventListener("change", function () { setRoom(els.roomInput.value); });
 els.shareBtn.addEventListener("click", async function () {
   const url = new URL(location.href);
@@ -475,7 +499,6 @@ window.addEventListener("focus", function () {
   }
 });
 setInterval(function () {
-  if (state.tab !== "receive") return;
   if (!liveFlags.mqtt) connectMqtt();
   if (!liveFlags.ntfy) connectNtfy();
   if (audioCtx && audioCtx.state === "suspended" && state.soundOn) audioCtx.resume();
