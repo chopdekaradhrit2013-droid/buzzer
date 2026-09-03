@@ -10,6 +10,7 @@ const state = {
   room: slug(params.get("room") || "main"),
   seen: new Set(),
   clientId: Math.random().toString(36).slice(2, 10),
+  soundOn: false,
 };
 
 const els = {
@@ -24,11 +25,14 @@ const els = {
   shareBtn: document.getElementById("shareBtn"),
 };
 
-const players = {};
 let mqttClient = null;
 let ntfySource = null;
 let channel = null;
 let liveFlags = { mqtt: false, ntfy: false };
+let audioCtx = null;
+let keepAlive = null;
+let wakeLock = null;
+let alarmTimer = null;
 
 function slug(value) {
   return String(value || "main").toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 24) || "main";
@@ -52,6 +56,7 @@ function setTab(tab) {
   url.searchParams.set("tab", tab);
   url.searchParams.set("room", state.room);
   history.replaceState({}, "", url);
+  if (tab === "receive") holdAwake();
 }
 function setRoom(room) {
   state.room = slug(room);
@@ -63,46 +68,153 @@ function setRoom(room) {
   history.replaceState({}, "", url);
   connect();
 }
-function getPlayer(id) {
-  if (!players[id]) {
-    players[id] = new Audio((window.VOICES && window.VOICES[id]) || "");
-    players[id].preload = "auto";
-  }
-  return players[id];
+
+function ensureAudio() {
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  if (!Ctx) return null;
+  if (!audioCtx) audioCtx = new Ctx();
+  if (audioCtx.state === "suspended") audioCtx.resume();
+  return audioCtx;
 }
+
+function startKeepAlive() {
+  const ctx = ensureAudio();
+  if (!ctx || keepAlive) return;
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.frequency.value = 20;
+  gain.gain.value = 0.0004;
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start();
+  keepAlive = { osc, gain };
+}
+
+async function holdAwake() {
+  try {
+    if (navigator.wakeLock && state.tab === "receive") {
+      wakeLock = await navigator.wakeLock.request("screen");
+      wakeLock.addEventListener("release", function () {
+        if (state.tab === "receive" && document.visibilityState === "visible") holdAwake();
+      });
+    }
+  } catch (e) {}
+}
+
 async function unlockAudio() {
   try {
-    const sample = getPlayer("safe");
-    sample.volume = 0.01;
-    await sample.play();
-    sample.pause();
-    sample.currentTime = 0;
-    sample.volume = 1;
-    els.unlockBtn.textContent = "Sound is on";
+    const ctx = ensureAudio();
+    if (ctx) await ctx.resume();
+    startKeepAlive();
+    state.soundOn = true;
+    els.unlockBtn.textContent = "Sound + background on";
     els.unlockBtn.classList.add("ready");
+    if ("Notification" in window && Notification.permission === "default") {
+      await Notification.requestPermission();
+    }
+    await holdAwake();
+    pingTone();
   } catch {
     els.unlockBtn.textContent = "Tap again to enable sound";
   }
 }
+
+function pingTone() {
+  const ctx = ensureAudio();
+  if (!ctx) return;
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = "sine";
+  osc.frequency.value = 660;
+  gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.08, ctx.currentTime + 0.02);
+  gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.16);
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start();
+  osc.stop(ctx.currentTime + 0.18);
+}
+
+function beep(freq, start, dur, type, vol) {
+  const ctx = ensureAudio();
+  if (!ctx) return;
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = type || "square";
+  osc.frequency.setValueAtTime(freq, start);
+  gain.gain.setValueAtTime(0.0001, start);
+  gain.gain.exponentialRampToValueAtTime(vol || 0.22, start + 0.01);
+  gain.gain.exponentialRampToValueAtTime(0.0001, start + dur);
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start(start);
+  osc.stop(start + dur + 0.02);
+}
+
+function playSafeTone() {
+  const ctx = ensureAudio();
+  if (!ctx) return speakFallback("safe");
+  const t = ctx.currentTime;
+  beep(523, t, 0.16, "sine", 0.16);
+  beep(659, t + 0.14, 0.18, "sine", 0.16);
+  beep(784, t + 0.3, 0.28, "sine", 0.18);
+}
+
+function playCarefulTone() {
+  const ctx = ensureAudio();
+  if (!ctx) return speakFallback("careful");
+  const t = ctx.currentTime;
+  beep(440, t, 0.2, "triangle", 0.18);
+  beep(392, t + 0.24, 0.28, "triangle", 0.18);
+}
+
+function playAlarmBuzzer() {
+  const ctx = ensureAudio();
+  if (!ctx) {
+    speakFallback("alert");
+    return;
+  }
+  if (alarmTimer) {
+    clearInterval(alarmTimer);
+    alarmTimer = null;
+  }
+  const burst = function () {
+    const t = ctx.currentTime;
+    for (let i = 0; i < 8; i++) {
+      const start = t + i * 0.16;
+      const hi = i % 2 === 0;
+      beep(hi ? 980 : 620, start, 0.12, "square", 0.32);
+    }
+  };
+  burst();
+  let n = 0;
+  alarmTimer = setInterval(function () {
+    n += 1;
+    burst();
+    if (n >= 3) {
+      clearInterval(alarmTimer);
+      alarmTimer = null;
+    }
+  }, 1400);
+}
+
 function speakFallback(id) {
   if (!window.speechSynthesis) return;
   const utter = new SpeechSynthesisUtterance(BUZZ[id].voice);
-  utter.rate = id === "alert" ? 1.08 : 0.96;
-  utter.pitch = id === "safe" ? 1.08 : id === "alert" ? 0.82 : 1;
+  utter.rate = id === "alert" ? 1.12 : 0.96;
+  utter.pitch = id === "alert" ? 0.7 : id === "safe" ? 1.08 : 1;
   window.speechSynthesis.cancel();
   window.speechSynthesis.speak(utter);
 }
+
 async function playVoice(id) {
-  const clip = getPlayer(id);
-  try {
-    clip.pause();
-    clip.currentTime = 0;
-    clip.volume = 1;
-    await clip.play();
-  } catch {
-    speakFallback(id);
-  }
+  ensureAudio();
+  if (id === "alert") playAlarmBuzzer();
+  else if (id === "safe") playSafeTone();
+  else playCarefulTone();
+  speakFallback(id);
 }
+
 function flashSend(id) {
   const btn = document.querySelector('.buzzer[data-buzz="' + id + '"]');
   if (!btn) return;
@@ -125,6 +237,23 @@ function showReceive(id, when) {
   });
   els.lastEvent.textContent = BUZZ[id].title + " received at " + new Date(when).toLocaleTimeString();
 }
+
+function notify(id) {
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+  const title = BUZZ[id].title;
+  const body = id === "alert" ? "Alarm buzzer" : BUZZ[id].voice;
+  const opts = { body: body, tag: "hangout-buzzer", renotify: true, silent: false };
+  if (navigator.serviceWorker && navigator.serviceWorker.ready) {
+    navigator.serviceWorker.ready.then(function (reg) {
+      try { reg.showNotification(title, opts); } catch (e) {
+        try { new Notification(title, opts); } catch (err) {}
+      }
+    });
+  } else {
+    try { new Notification(title, opts); } catch (e) {}
+  }
+}
+
 function handleMessage(raw) {
   let data = raw;
   if (typeof raw === "string") {
@@ -138,7 +267,8 @@ function handleMessage(raw) {
   if (state.tab === "receive") {
     showReceive(data.id, data.t || Date.now());
     playVoice(data.id);
-    if (navigator.vibrate) navigator.vibrate(data.id === "alert" ? [90, 40, 90] : 45);
+    notify(data.id);
+    if (navigator.vibrate) navigator.vibrate(data.id === "alert" ? [120, 50, 120, 50, 220] : 45);
   }
 }
 function payload(id) {
@@ -170,7 +300,8 @@ function connectMqtt() {
   mqttClient = window.mqtt.connect("wss://broker.hivemq.com:8884/mqtt", {
     clientId: "buzzer-" + state.clientId,
     clean: true,
-    reconnectPeriod: 2000,
+    reconnectPeriod: 1500,
+    keepalive: 20,
   });
   mqttClient.on("connect", function () {
     liveFlags.mqtt = true;
@@ -178,6 +309,7 @@ function connectMqtt() {
     mqttClient.subscribe(topic());
   });
   mqttClient.on("close", function () { liveFlags.mqtt = false; markLive(); });
+  mqttClient.on("offline", function () { liveFlags.mqtt = false; markLive(); });
   mqttClient.on("message", function (_t, message) { handleMessage(message.toString()); });
 }
 function connectNtfy() {
@@ -222,6 +354,28 @@ els.shareBtn.addEventListener("click", async function () {
     prompt("Copy this receive link", url.toString());
   }
 });
+
+document.addEventListener("visibilitychange", function () {
+  if (document.visibilityState === "visible") {
+    ensureAudio();
+    holdAwake();
+    if (!liveFlags.mqtt || !liveFlags.ntfy) connect();
+  }
+});
+window.addEventListener("focus", function () {
+  ensureAudio();
+  if (!liveFlags.mqtt) connectMqtt();
+});
+setInterval(function () {
+  if (state.tab !== "receive") return;
+  if (!liveFlags.mqtt) connectMqtt();
+  if (!liveFlags.ntfy) connectNtfy();
+  if (audioCtx && audioCtx.state === "suspended" && state.soundOn) audioCtx.resume();
+}, 8000);
+
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("./sw.js").catch(function () {});
+}
 
 setRoom(state.room);
 setTab(state.tab);
