@@ -1,0 +1,1 @@
+window.VOICES = window.VOICES || {};
