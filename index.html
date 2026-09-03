@@ -19,7 +19,7 @@
           <p class="eyebrow">Live signal</p>
           <h1>Buzzer</h1>
         </div>
-        <div class="link-pill" id="roomChip" title="Everyone on this room hears the same buzzers">
+        <div class="link-pill" title="Same room = same buzzers">
           <span class="dot" id="connDot"></span>
           <span id="roomLabel">room · main</span>
         </div>
@@ -31,7 +31,7 @@
       </nav>
 
       <section class="panel" id="sendPanel">
-        <p class="hint">Tap a buzzer. Anyone on <strong>Receive</strong> in this room hears it instantly.</p>
+        <p class="hint">Tap a buzzer. Anyone on <strong>Receive</strong> in this room hears the voice and sees the status.</p>
         <div class="buzzers">
           <button class="buzzer safe" data-buzz="safe">
             <span class="ring"></span>
@@ -52,7 +52,7 @@
       </section>
 
       <section class="panel hidden" id="receivePanel">
-        <p class="hint">Keep this tab open. Status lights up when someone sends a buzzer.</p>
+        <p class="hint">Keep this tab open. Status lights up and the matching voice plays when someone sends.</p>
         <button class="unlock" id="unlockBtn">Tap to enable sound</button>
         <div class="status-grid">
           <article class="status-card" data-status="safe">
@@ -79,9 +79,10 @@
           Room
           <input id="roomInput" maxlength="24" autocomplete="off" spellcheck="false" />
         </label>
-        <button class="ghost" id="shareBtn">Copy link</button>
+        <button class="ghost" id="shareBtn">Copy receive link</button>
       </footer>
     </main>
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
     <script src="./voices.js"></script>
     <script src="./app.js"></script>
   </body>

@@ -5,15 +5,15 @@ Shared live buzzers: **Safe**, **Be careful**, and **Alert**.
 ## How to use
 
 1. Open the site.
-2. Use the **Send** tab to tap a buzzer.
-3. Open the same room on another phone/laptop and switch to **Receive**.
-4. Tap **Enable sound** once on Receive (required by phones).
+2. Use **Send** to tap a buzzer.
+3. On another phone or laptop, open the same room and switch to **Receive**.
+4. Tap **Enable sound** once on Receive (phones block audio until you tap).
 5. When someone sends a buzzer, Receive plays the voice-over and lights the active status.
 
-Share a receive link with `?tab=receive&room=your-room`. Anyone on the same room hears the same signals.
+Share a receive link like `?tab=receive&room=your-room`.
 
 ## Deploy
 
-This is a static site. On Vercel: Import the GitHub repo and deploy. No env vars needed.
+Static site. Import the GitHub repo on Vercel. No env vars.
 
-Realtime uses a public ntfy topic namespaced per room.
+Realtime uses MQTT (HiveMQ public broker) plus ntfy, so two phones on the same room stay in sync.
