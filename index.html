@@ -42,6 +42,14 @@
       <section class="panel hidden" id="receivePanel">
         <p class="hint">Tap enable once. Keep this page open in a tab (it can sit in the background). Alert plays a loud alarm buzzer.</p>
         <button class="unlock" id="unlockBtn">Tap to enable sound + background</button>
+        <label class="toggle" id="ttsWrap">
+          <input type="checkbox" id="ttsToggle" />
+          <span class="switch"></span>
+          <span class="toggle-copy">
+            <strong>Text to speech</strong>
+            <small>Speak Safe / Be careful / Alert in background</small>
+          </span>
+        </label>
         <div class="status-grid">
           <article class="status-card" data-status="safe"><span class="badge">Safe</span><strong>Waiting</strong><small>No signal yet</small></article>
           <article class="status-card" data-status="careful"><span class="badge">Be careful</span><strong>Waiting</strong><small>No signal yet</small></article>
