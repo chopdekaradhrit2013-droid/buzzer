@@ -4,12 +4,24 @@ const BUZZ = {
   alert: { title: "Alert", voice: "Alert. Alert. Attention needed." },
 };
 
+function getClientId() {
+  try {
+    const existing = localStorage.getItem("buzzer-client");
+    if (existing) return existing;
+    const id = Math.random().toString(36).slice(2, 10);
+    localStorage.setItem("buzzer-client", id);
+    return id;
+  } catch (e) {
+    return Math.random().toString(36).slice(2, 10);
+  }
+}
+
 const params = new URLSearchParams(location.search);
 const state = {
   tab: params.get("tab") === "receive" ? "receive" : "send",
   room: slug(params.get("room") || "main"),
   seen: new Set(),
-  clientId: Math.random().toString(36).slice(2, 10),
+  clientId: getClientId(),
   soundOn: false,
   tts: localStorage.getItem("buzzer-tts") !== "off",
   speaking: false,
@@ -143,28 +155,11 @@ async function unlockAudio() {
       await Notification.requestPermission();
     }
     await holdAwake();
-    pingTone();
   } catch {
     [els.unlockBtn, els.unlockBtnSend].forEach(function (btn) {
       if (btn) btn.textContent = "Tap again to enable sound";
     });
   }
-}
-
-function pingTone() {
-  const ctx = ensureAudio();
-  if (!ctx) return;
-  const osc = ctx.createOscillator();
-  const gain = ctx.createGain();
-  osc.type = "sine";
-  osc.frequency.value = 660;
-  gain.gain.setValueAtTime(0.0001, ctx.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.08, ctx.currentTime + 0.02);
-  gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.16);
-  osc.connect(gain);
-  gain.connect(ctx.destination);
-  osc.start();
-  osc.stop(ctx.currentTime + 0.18);
 }
 
 function beep(freq, start, dur, type, vol) {
@@ -275,7 +270,6 @@ function setTts(on) {
   state.tts = !!on;
   localStorage.setItem("buzzer-tts", state.tts ? "on" : "off");
   if (els.ttsToggle) els.ttsToggle.checked = state.tts;
-  if (state.tts && state.soundOn) speakText("Text to speech is on.", null, true);
 }
 
 function flashSend(id) {
@@ -304,7 +298,7 @@ function showReceive(id, when) {
 function showSpoken(text, when) {
   if (els.spokenText) els.spokenText.textContent = text;
   if (els.messageCard) els.messageCard.classList.add("on");
-  setHeard("\"" + text + "\" at " + new Date(when).toLocaleTimeString());
+  setHeard('"' + text + '" at ' + new Date(when).toLocaleTimeString());
 }
 
 function notify(title, body) {
@@ -339,23 +333,21 @@ function publish(body, title) {
   });
 }
 
-function handleIncoming(data, isLocal) {
+function handleIncoming(data) {
   if (data.id === "say") {
     const text = String(data.text || "").trim().slice(0, 220);
     if (!text) return;
     showSpoken(text, data.t || Date.now());
     ensureAudio();
     speakText(text, "say", true);
-    if (!isLocal) notify("Message", text);
+    notify("Message", text);
     if (navigator.vibrate) navigator.vibrate([40, 30, 40]);
     return;
   }
   if (!BUZZ[data.id]) return;
   showReceive(data.id, data.t || Date.now());
   playVoice(data.id);
-  if (!isLocal) {
-    notify(BUZZ[data.id].title, state.tts ? BUZZ[data.id].voice : (data.id === "alert" ? "Alarm buzzer" : BUZZ[data.id].voice));
-  }
+  notify(BUZZ[data.id].title, state.tts ? BUZZ[data.id].voice : (data.id === "alert" ? "Alarm buzzer" : BUZZ[data.id].voice));
   if (navigator.vibrate) navigator.vibrate(data.id === "alert" ? [120, 50, 120, 50, 220] : 45);
 }
 
@@ -368,8 +360,8 @@ function handleMessage(raw) {
   const key = data.uid || (data.id + "-" + data.t + "-" + (data.text || ""));
   if (state.seen.has(key)) return;
   state.seen.add(key);
-  if (data.from === state.clientId) return;
-  handleIncoming(data, false);
+  if (data.from && data.from === state.clientId) return;
+  handleIncoming(data);
 }
 
 function payload(id, extra) {
@@ -379,9 +371,7 @@ function payload(id, extra) {
 function sendBuzz(id) {
   unlockAudio();
   flashSend(id);
-  const body = payload(id);
-  handleIncoming(body, true);
-  publish(body, BUZZ[id].title);
+  publish(payload(id), BUZZ[id].title);
 }
 
 function sendSpeech() {
@@ -391,9 +381,7 @@ function sendSpeech() {
     return;
   }
   unlockAudio();
-  const body = payload("say", { text: text });
-  handleIncoming(body, true);
-  publish(body, text.slice(0, 40));
+  publish(payload("say", { text: text }), text.slice(0, 40));
   els.speakBtn.textContent = "Sent";
   els.speakBtn.classList.add("sent");
   setTimeout(function () {
@@ -407,7 +395,7 @@ function connectMqtt() {
   if (mqttClient) { try { mqttClient.end(true); } catch (e) {} mqttClient = null; }
   liveFlags.mqtt = false;
   mqttClient = window.mqtt.connect("wss://broker.hivemq.com:8884/mqtt", {
-    clientId: "buzzer-" + state.clientId,
+    clientId: "buzzer-" + state.clientId + "-" + Math.random().toString(36).slice(2, 6),
     clean: true,
     reconnectPeriod: 1500,
     keepalive: 20,
