@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0b0d12" />
+    <title>Buzzer</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='28' fill='%2314b8a6'/%3E%3Ccircle cx='32' cy='32' r='10' fill='%230b0d12'/%3E%3C/svg%3E" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="bg"></div>
+    <main class="app">
+      <header class="top">
+        <div>
+          <p class="eyebrow">Live signal</p>
+          <h1>Buzzer</h1>
+        </div>
+        <div class="link-pill" id="roomChip" title="Everyone on this room hears the same buzzers">
+          <span class="dot" id="connDot"></span>
+          <span id="roomLabel">room · main</span>
+        </div>
+      </header>
+
+      <nav class="tabs" role="tablist">
+        <button class="tab is-active" data-tab="send" role="tab" aria-selected="true">Send</button>
+        <button class="tab" data-tab="receive" role="tab" aria-selected="false">Receive</button>
+      </nav>
+
+      <section class="panel" id="sendPanel">
+        <p class="hint">Tap a buzzer. Anyone on <strong>Receive</strong> in this room hears it instantly.</p>
+        <div class="buzzers">
+          <button class="buzzer safe" data-buzz="safe">
+            <span class="ring"></span>
+            <span class="label">Safe</span>
+            <span class="sub">All clear</span>
+          </button>
+          <button class="buzzer careful" data-buzz="careful">
+            <span class="ring"></span>
+            <span class="label">Be careful</span>
+            <span class="sub">Stay alert</span>
+          </button>
+          <button class="buzzer alert" data-buzz="alert">
+            <span class="ring"></span>
+            <span class="label">Alert</span>
+            <span class="sub">Needs attention</span>
+          </button>
+        </div>
+      </section>
+
+      <section class="panel hidden" id="receivePanel">
+        <p class="hint">Keep this tab open. Status lights up when someone sends a buzzer.</p>
+        <button class="unlock" id="unlockBtn">Tap to enable sound</button>
+        <div class="status-grid">
+          <article class="status-card" data-status="safe">
+            <span class="badge">Safe</span>
+            <strong>Waiting</strong>
+            <small>No signal yet</small>
+          </article>
+          <article class="status-card" data-status="careful">
+            <span class="badge">Be careful</span>
+            <strong>Waiting</strong>
+            <small>No signal yet</small>
+          </article>
+          <article class="status-card" data-status="alert">
+            <span class="badge">Alert</span>
+            <strong>Waiting</strong>
+            <small>No signal yet</small>
+          </article>
+        </div>
+        <p class="last" id="lastEvent">Listening…</p>
+      </section>
+
+      <footer class="foot">
+        <label class="room-edit">
+          Room
+          <input id="roomInput" maxlength="24" autocomplete="off" spellcheck="false" />
+        </label>
+        <button class="ghost" id="shareBtn">Copy link</button>
+      </footer>
+    </main>
+    <script src="./voices.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>
